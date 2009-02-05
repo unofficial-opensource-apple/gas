@@ -25,6 +25,382 @@ Bugs to be fixed:
 - The PowerPC extended branch mnemonic like beqlrl need to take a CRFONLY or
   a number shifted over by 2 (like the fcmpu instruction).
 
+Changes for the 5.25 release (the cctools-667.1 release):
+- Changed x86_64 relocation entries, so that for references from a debug section
+  to a external symbol that is defined creates a local relocation entry.
+  Radar bug #5259877.
+  - In fixup_section() in layout.c under the N_SECT case inside the #if for
+    x86_64, where it is dealing with "Symbol offsets are not part of fixups for
+    external symbols for x86_64" the expression for the if conditonal was
+    changed from:
+	if(add_symbol_N_TYPE == N_SECT &&
+	   is_local_symbol(add_symbolP) &&
+	   !is_section_cstring_literals(add_symbol_nsect))
+    to:
+	if((is_section_debug(nsect) &&
+	    add_symbol_N_TYPE != N_UNDF) ||
+	   (add_symbol_N_TYPE == N_SECT &&
+	    is_local_symbol(add_symbolP) &&
+	    !is_section_cstring_literals(add_symbol_nsect)) )
+  - Changed fix_to_relocation_entries() in write_object.c to pass another
+    parameter, debug_section.  And changed the call to it from write_object()
+    to pass debug_section as frchainP->frch_section.flags & S_ATTR_DEBUG.
+  - In fix_to_relocation_entries() in write_object.c where it is dealing with
+    "For undefined symbols this will be an external relocation entry" inside
+    the #if for x86_64 the expression for the if conditonal was changed from:
+	if (fixP->fx_subsy == NULL && (!is_local_symbol(symbolP) ||
+	    ((symbolP->sy_type & N_TYPE) == N_SECT &&
+	     is_section_cstring_literals(symbolP->sy_other)))) {
+    to:
+	if(fixP->fx_subsy == NULL &&
+	   (!debug_section || (symbolP->sy_type & N_TYPE) == N_UNDF) &&
+	   (!is_local_symbol(symbolP) ||
+	    ((symbolP->sy_type & N_TYPE) == N_SECT &&
+	     is_section_cstring_literals(symbolP->sy_other)) ) ) {
+
+Changes for the 5.25 release (the cctools-665 release):
+- Added the SSE4 instructions to the i386 assembler.  The table entry for
+  crc32b is done with the suffix, because the b_Suf won't allow the second
+  parameter to be a Reg32 or Reg64 the 'b' suffix is part of the name for
+  crc32 with a first parameter of Reg8|ByteMem.  The changes are in
+  i386-opcode.h, i386.c and i386.h .  Radar bug #4943015.
+
+Changes for the 5.24 release (the cctools-662 release):
+- Changed the assembler to allow .mod_init_func in -static x86_64 .s files.
+  The change was in s_builtin_section() in read.c to add an #if around the
+  check for the S_MOD_INIT_FUNC_POINTERS section type.  Radar bug #5127668.
+
+Changes for the 5.24 release (the cctools-649 release):
+- Added a cctools.plist and changed the Makefile to install it into
+  /usr/local/OpenSourceVersions/cctools.plist and copied the COPYING file to
+  /usr/local/OpenSourceLicenses/cctools.txt . Radar bug #4898129.
+
+Changes for the 5.24 release (the cctools-646 release):
+- Change the assembler driver to construct the paths to the assembler
+  relative to the path of the driver.  Radar bug #4841943.
+
+Changes for the 5.24 release (the cctools-642 release):
+- Fixed a problem with the .lcomm directive not correctly handling a value
+  greater than would fix in a 32-bit value.  The problem was the type of the
+  local variable size was declared as an int not a signed_target_addr_t.
+  Radar bug #4098028.
+
+Changes for the 5.24 release (the cctools-641 release):
+- Changed the x86_64 assembler to always keep assembler temporary symbol
+  (starting with 'L') in literal cstring sections.  And make relocation entries
+  to them use external relocation entries.  To do this the new routine
+  is_section_cstring_literals() was added to section.[ch]. Then layout_symbols()
+  in write_object.c was changed to call this to make it save symbols starting
+  with 'L'.  And fix_to_relocation_entries() in write_object.c was changed to
+  also call this as part of the test for making a external relocation entry.
+  Also fixup_section() in layout.c and x86_64_fixup_symbol() in i386.c were
+  each changed in one place to make this new call.  Radar bug #4765733.
+
+Changes for the 5.24 release (the cctools-638 release):
+- Changed x86_64_fixup_symbol() in i386.c to force a relocation entry when
+  generating a PC-relative with a @GOTPCREL relocation type.  Radar bug
+  #4742404.
+- Fixed a problem using .org with the i386 assembler caused by the changes to
+  use optimal nops for padding .align for i386 architectures in Radar bug
+  #4096964.  The fix was in layout_addresses() in layout.c to save the
+  fragment's type before changing rs_org and rs_align flags to rs_fill.  Then
+  added a check to see that the fragment type was rs_align as part of the tests
+  before calling i386_align_code().  Radar bug #4750873.
+
+Changes for the 5.24 release (the cctools-637 release):
+- Changed s_comm() in read.c to take an optional alignment value after the size
+  of the common symbol.  It is stored in the nlist struct in the n_desc field
+  using the new SET_COMM_ALIGN() macro in <mach-o/nlist.h>.  Radar bug #4597166.
+
+Changes for the 5.24 release (the cctools-635 release):
+- Fixed a problem with macro expansion and the interaction with the fix to
+  radar bug #4141844.  The fix was to add a SKIP_WHITESPACE() call in
+  expand_macro() in read.c .  Radar bug #4729012
+
+Changes for the 5.24 release (the cctools-633 release):
+- Changed write_object.c to deal with the change of type for indirect symbols
+  to uint32_t * when ported to 64-bit. Radar bug #4407440.
+
+Changes for the 5.24 release (the cctools-632 release):
+- Fixed problems with the use of -static and the i386 code for multi-byte nops.
+  One problem was S_ATTR_SOME_INSTRUCTIONS can be set at any point in the first
+  pass so its use it in frag_align() may not match it use in layout_addresses().
+  Changed this so multi-byte nops are only generated with -dynamic is used.
+  Radar bug #4700558.
+  - Made changes in read.c in how S_ATTR_PURE_INSTRUCTIONS is set for the .text
+    section.  Removing the very old code that was not setting this with -static.
+    - Changed builtin_sections[] for the text section to set the
+      S_ATTR_PURE_INSTRUCTIONS attribute and removed the comment about how
+      s_builtin_section() sets this.
+    - Changed s_builtin_section() for the test of incompatible features to allow
+      S_ATTR_PURE_INSTRUCTIONS without -dyanmic. And changed the code to just
+      call section_new() and removed the very old code that was only setting
+      S_ATTR_PURE_INSTRUCTIONS when -dynamic was set.
+   - Changed frag_align() in frags.c and layout_addresses() in layout.c to no
+     longer test for the attribute S_ATTR_SOME_INSTRUCTIONS and added a test
+     for flagseen['k'] == TRUE (that is -dynamic) before allocating space for
+     multi-byte nops or calling i386_align_code() to create them.
+
+Changes for the 5.24 release (the cctools-631 release):
+- Fixed a bug in frag_align() in frags.c which was not allocating bytes for the
+  I386 nops when the align value was more than 2^4.  Then if the alignment
+  needed turned out to be less than 16 bytes it would write the nops over the
+  end of the frag causing a crash.  Radar bug #4685058.
+
+Changes for the 5.24 release (the cctools-630 release):
+- Fixed a bug in layout_addresses() in layout.c introduced when the code was
+  changed for bug #4096964.  The assignment statement to set the variable
+  fill_size got incorrectly moved right after the statement it was used.
+  Radar bug #4678285.
+- Changed all but one as_warn() calls in main() in as.c to as_fatal().
+  Radar bug #4674902.
+- Picked up the changes that got dropped from the cctools-622.5 release:
+  - Support the new x86-64 relocation entry types for signed relocations
+    with offsets.  Radar bug #4664658.
+  Radar bug #4678307.
+
+Changes for the 5.24 release (the cctools-629 release):
+- Corrected an error message in the assembler driver which was "known host
+  architecture" to "unknown host architecture" in main() in driver.c .
+  Radar bug #4666302.
+- Added the line #include "i386.h" with the #if defined(I386) && defined(ARCH64)
+  to write_object.c around it to remove the warning about implicit declaration
+  of function 'is_local_symbol'.  Radar bug #4504314.
+- Changed to use optimal nops for padding .align for i386 architectures.  Radar
+  bug #4096964.
+  - Changed frag_align() in frags.c to allocate the maximum number of needed
+    bytes when padding a section containing instruction with nops for the I386.
+  - Changed layout_addresses() in layout.c in the loop that changes rs_align
+    frags to rs_fill frags in the I386 case.  If it is an align of a section
+    containing instructions being padded with nops then the routine
+    i386_align_code() is called to fill in the frag's fr_literal bytes.
+  - Changed i386_align_code() in i386 to use 2-9 byte nops sequences as given
+    from Intel for Yonah/Merom.
+  - Added the memory nop in i386-opcode.h and updated the comment for the
+    single byte nop.
+
+Changes for the 5.24 release (the cctools-628 release):
+- Changed do_scrub_next_char() in app.c for I386 to leave one white space after
+  the second token as well as the first token on a line.  This allows i386
+  prefixes to be parsed out with just a space between them and the instruction
+  mnemonic. This reqires some other assembly parsing to change to work
+  correctly.  In s_zerofill() and s_section() in read.c an extra call to
+  SKIP_WHITESPACE() was added before setting the sectname variable.  Radar bug
+  #4141844.
+
+Changes for the 5.24 release (the cctools-627 release):
+- Changed the uses of "stuff/target_arch.h" to "arch64_32.h" as the last tool
+  was ported to work with 32-bit and 64-bit object files.  This leaves only the
+  assembler that is compiled to different binaries for different architectures.
+  Radar bug #3903136.
+
+Changes for the 5.23 release (the cctools-622.2 release):
+- Track symbols by definition order, not value.  Radar bug #4501115.
+- Add in a few lines which were approved but not checked in for 4577120.
+  Radar bug #4577120.
+
+Changes for the 5.23 release (the cctools-622.1 release):
+- Add S_16BYTE_LITERALS as a fixed-size data section.  Radar bug #4610297.
+
+Changes for the 5.23 release (the cctools-622 release):
+- In x86-64 code, synthesize a symbol for each fixup, which allows the
+  assembler to determine later whether to require a relocation entry for that
+  fixup.  Radar bug #4577120.
+
+Changes for the 5.23 release (the cctools-621 release):
+- Changed symbol_list_sort_by_value to perform a stable sort.  Radar bug
+  #4598955.
+
+Changes for the 5.23 release (the cctools-620 release):
+- Added symbol_list_sort_by_value, which we use to sort the sy_prev_by_value
+  list of symbols for x86-64 code.  Radar bug #4501115.
+
+Changes for the 5.23 release (the cctools-619 release):
+- Changed output_jump() in i386.c to used is_local_symbol() and not test
+  sy_name[0] != 'L' so it would not crash when sy_name is NULL.  Radar bug
+  #4523898.
+- Emit an X86_64_RELOC_BRANCH fixup for branches to local labels in x86-64
+  code.  Radar bug #4581768.
+
+Changes for the 5.23 release (the cctools-618 release):
+- Changed lex_got() in i386.c so that the symbol _GLOBAL_OFFSET_TABLE_ is not
+  created if it does not already exist.  Radar bug #4534951.
+- Add support for .literal16 sections.  Radar bug #4555162.
+
+Changes for the 5.23 release (the cctools-616 release):
+- Don't fix up internal relocations into external relocations in DWARF debug
+  sections in x86-64 code.  Radar bug #4498034.
+
+Changes for the 5.23 release (the cctools-615 release):
+- Added support for the GOT_LOAD relocation entry type to the x86-64 assembler.
+  Radar bug #4486815.
+- Fixed a problem with the .comm directive not correctly handling a value
+  greater than would fix in a 32-bit value.  The problem was the return type of 
+  get_absolute_expression() in read.[ch] was declared to return a long instead
+  of a signed_target_addr_t. Causing the value in the expression to be truncated
+  before the code in s_comm() in read.c could use it.  Radar bug #4177397.
+
+Changes for the 5.23 release (the cctools-613 release):
+- Changed as.h to #include <stdint.h> first so it does not get compile errors
+  on Mac OS X 10.3.9.  Radar bug #4508798.
+
+Changes for the 5.23 release (the cctools-613 release):
+- In some circumstances, the assembler would create an x86-64 fixup which was
+  PC-relative but not marked as having a PC-relative relocation entry, which
+  allowed fixup_section to optimize out the fixup.  For x86-64 we need to
+  create a relocation entry in that case when we're fixing up a non-local
+  symbol, so x86_64_fixup_symbol was changed to mark the fixup as having a
+  PC-relative relocation entry.  Radar bug #4545597.
+
+Changes for the 5.23 release (the cctools-611 release):
+- Fixed a regression introduced in cctools-590.37.3 (Radar bug #4486817) which
+  caused x86-64 non-PC-relative relocation entries in fixed-size-data sections
+  to be fixed up like relocation entries in non-fixed-size-data sections.
+  Radar bug #4536738.
+
+Changes for the 5.23 release taken from cctools-590.43 (the cctools-610
+release):
+- Added support for assembling the Vanderpool instructions to the i386
+  assembler.  Was Radar bug #4427573 in cctools-590.43.  Radar bug #4534436.
+
+Changes for the 5.22 release (the cctools-590.38.3 release):
+- Force GOT and GOT_LOAD relocations to be PC-relative, as they always should
+  be, so we don't eliminate them later in the assembler. Radar bug #4500790.
+- Support 64-bit constants in .code64 blocks in x86-64 assembly. Radar bug
+  #4439905.
+- Ignore stabs when fixing up x86-64 symbols in the assembler. Radar bug
+  #4502759.
+- Accept 'LL' and 'ULL' as suffixes for constants in assembly code. Radar bug
+  #4496022.
+- Get RIP-relative relocations correct for local symbols in non-fixed-size-data
+  sections. Radar bug #4497536.
+
+Changes for the 5.22 release (the cctools-590.37.3 release):
+- Get offsets right for RIP-relative non-external relocations in x86-64 code.
+  Radar bug #4486817.
+- Handle symbols with NULL names when fixing up x86-64 symbols. Radar bug
+  #4475602.
+- Fix a regression in the assembler which prevented it from reading 8-bit
+  characters. Radar bug #4488556.
+
+Changes for the 5.22 release (the cctools-590.37.2 release):
+- Don't go down the scattered relocation code path in the assembler for x86-64
+  relocation entries. Radar bug #4486807.
+- Don't allow illegal section types for x86-64 assembly. Radar bug #4475470.
+- Support 32-bit difference GOTPCREL syntax in x86-64 assembly. Radar bug
+  #4485082.
+- Generate the right relocation entry type for .long GOTPCREL expressions.
+  Radar bug #4486764.
+- Cleaned up some binutils merge issues in as/i386.c. Radar bug #4422698.
+
+Changes for the 5.22 release (the cctools-590.37.1 release):
+- Don't allow illegal section types in x86-64 assembly. Radar bug #4475470.
+
+Changes for the 5.22 release (the cctools-590.36.3 release):
+- Add support for the new relocation entry types for x86-64. Radar bug
+  #4475165.
+- Don't include symbol offsets in fixups for external symbols for x86-64 and
+  don't fix up x86_64 symbols in sections that always contain fixed-size data.
+  Also, rename i386_fixup_symbol to x86_64_fixup_symbol because it's only used
+  for x86_64 code. Radar bug #4475152.
+
+Changes for the 5.22 release (the cctools-590.34.1 release):
+- Improve the message that appears when we try to assemble 32-bit signed
+  static relocations in x86-64 code. Radar bug #4434039.
+- Fixed addends for relocation entries for RIP-relative x86-64
+  instructions. Radar bug #4440315.
+
+Changes for the 5.22 release (the cctools-590.31.4 release):
+- Converted more warnings in read.c to errors, as required by the as_warn
+  changes in cctools-590.31.1. Radar bug #4429135.
+- Correctly generate x86_64 relocation entries for files containing common
+  symbols and for local symbols that resolve to the same non-local symbol.
+  Radar bug #4427629.
+
+Changes for the 5.22 release (the cctools-590.31.2 release):
+- Fixed an incorrect merge of i386 relocation entry generation
+  for intersegment jumps. Radar bug #4421123.
+
+Changes for the 5.22 release (the cctools-590.31.1 release):
+- Added support for the x86_64 architecture.  Radar bug #4345090.
+- Added support for the Merom New Instructions.  Radar bug #4407298.
+- Merged the i386 assembler from GNU binutils 2.16.1 into the i386
+  assembler sources.
+- Changed as_warn to be a warning rather than an error, removed as_warning,
+  changed as_warning calls to as_warn, and changed as_warn calls which
+  expected to be errors to as_bad or as_fatal as appropriate. This matches
+  GNU binutils.
+
+Changes for the 5.21 release (the cctools-590.39 release):
+- Removed the -I flag for private headers as it would no longer compile with it.
+
+Changes for the 5.21 release (the cctools-590.37 release):
+- Changed the assembler to allow a single quote character in a string to be
+  escaped with a leading back slash.  Added a case statement entry for this in
+  do_scrub_next_char() in app.c and next_char_of_string() in read.c.  Radar bug
+  #4391495.
+- Added the i386 instruction synonym fisttp for fisttps .  This is done with
+  table entry:
+    {"fisttp", 1, 0xdf, 1, Modrm, {Mem, 0, 0},"O"},
+  in i386-opcode.h . Radar bug #4462289.
+- Fixed another problem with 32-bit assembler having their expression evaluated
+  as 64-bit expressions.  When a symbol's value is used in an expression it was
+  not being signed extended since it is strored as a 32-bit unsigned value.  The
+  fix was in operand() in expr.c to cast the value to a long before assigning
+  it to the expression's value.   Radar bug #4461836.
+- Fixed a problem with .set symbols that used expressions with "a+constant-b"
+  in relocatable items.  The constant was not being added into the relocatable
+  expression in fixup_section() in layout.c in the case add_symbol_N_TYPE is
+  N_ABS and add_symbolP->expression is not NULL.  The fix was to add in
+  exp->X_add_number to the value being calculated.  Radar bug #4473241.
+
+Changes for the 5.21 release (the cctools-590.34 release):
+- Fixed problems where numbers were not being correctly treated as 64-bit
+  expressions.  Radar bug #4434572.
+  - Changed the type of the variable number in operand() in expr.c from a valueT
+    to a signed_expr_t so it will be 64-bit even for 32-bit assemblers.  Also in
+    there removed the #define for NUMBER_FMT and just used %lld in the one place
+    it was used.
+  - Fixed the error message in cons() in read.c so it was correctly using %llx
+    and not casting the values to unsigned ints.
+
+Changes for the 5.21 release (the cctools-590.32 release):
+- Changed the assembler to allow .quad for all architectures. Radar bug
+  #4227961.
+  - Changed read.c were an #if defined(ARCH64) was removed around the "quad"
+    entry in the pseudo_table[] array.
+  - Added the typedef signed_expr_t as a int64_t to expr.h to replace the use of
+    signed_target_addr_t in places for expression values.
+  - Changed the prototypes of md_number_to_chars() and md_number_to_imm() in
+    md.h so the second prarameter, val, now has a type of signed_expr_t .
+  - For the md_number_to_chars() and md_number_to_imm() routines changed the
+    second prarameter so it now has a type of signed_expr_t.  These changes were
+    made in i386.c, ppc.c, m68k.c, m88k.c, i860.c, hppa.c and sparc.c .  And for
+    i386.c added code for 8 byte values and for ppc.c the #if defined(ARCH64)
+    around the code for 8 byte values was just removed.  Also for code in ppc.c,
+    m68k, i860.c, hppa.c and sparc.c changed from using TA_DFMT to print an
+    expression's value to %lld.
+  - Changed cons() in read.c and removed the #if defined(ARCH64) around the
+    setting in the mask and the SEG_BIG case statement.  And changed
+    signed_target_addr_t to signed_expr_t.
+
+Changes for the 5.21 release (the cctools-590.27 release):
+- Changed the way ".set r,a-b" is handled so that when the directive is
+  encountered the symbols a or b do not have to be defined at that point.
+  Radar bug #4390251.
+  - The first part of the fix was in pseudo_set() in read.c in the SEG_DIFFSECT
+    case to not require the section numbers of the two symbols to be the same.
+    Allowing an expression to be created for the symbol.
+  - The second part of the fix was to add error checking in write_object() in
+    write_object.c where it sets the value of the symbols with expressions
+    in the symbol table.
+
+Changes for the 5.21 release (the cctools-590.24 release):
+- Added support for DWARF.  Radar bug #4367423.
+  - Added the attribute "debug" to the attribute_names[] array in read.c with
+    the new constant S_ATTR_DEBUG.
+  - Added .debug_note to pseudo_table[] in read.c as the same for .stabs .
+
 Changes for the 5.20 release (the cctools-590.20 release):
 - Removed the warnings when building. Radar bug #4340147.
   - Added -fno-builtin-round to the Makefile.

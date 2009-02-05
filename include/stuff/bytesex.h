@@ -33,7 +33,6 @@
 #define __private_extern__ __declspec(private_extern)
 #endif
 
-#include "stuff/target_arch.h"
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
 #include <mach/m68k/thread_status.h>
@@ -64,10 +63,17 @@ enum byte_sex {
 
 #define SWAP_SHORT(a) ( ((a & 0xff) << 8) | ((unsigned short)(a) >> 8) )
 
+#define SWAP_INT(a)  ( ((a) << 24) | \
+		      (((a) << 8) & 0x00ff0000) | \
+		      (((a) >> 8) & 0x0000ff00) | \
+	 ((unsigned int)(a) >> 24) )
+
+#ifndef __LP64__
 #define SWAP_LONG(a) ( ((a) << 24) | \
 		      (((a) << 8) & 0x00ff0000) | \
 		      (((a) >> 8) & 0x0000ff00) | \
 	((unsigned long)(a) >> 24) )
+#endif
 
 __private_extern__ long long SWAP_LONG_LONG(
     long long ll);
@@ -227,7 +233,7 @@ __private_extern__ void swap_i386_thread_state(
 /* current i386 thread states */
 #if i386_THREAD_STATE == 1
 __private_extern__ void swap_i386_float_state(
-    struct i386_float_state *fpu,
+    struct __darwin_i386_float_state *fpu,
     enum byte_sex target_byte_sex);
 
 __private_extern__ void swap_i386_exception_state(
@@ -249,6 +255,32 @@ __private_extern__ void swap_i386_thread_cthreadstate(
     i386_thread_cthreadstate_t *user,
     enum byte_sex target_byte_sex);
 #endif /* i386_THREAD_STATE == -1 */
+
+#ifdef x86_THREAD_STATE64
+__private_extern__ void swap_x86_thread_state64(
+    x86_thread_state64_t *cpu,
+    enum byte_sex target_byte_sex);
+
+__private_extern__ void swap_x86_float_state64(
+    x86_float_state64_t *fpu,
+    enum byte_sex target_byte_sex);
+
+__private_extern__ void swap_x86_state_hdr(
+    struct x86_state_hdr *hdr,
+    enum byte_sex target_byte_sex);
+
+__private_extern__ void swap_x86_exception_state64(
+    x86_exception_state64_t *exc,
+    enum byte_sex target_byte_sex);
+
+__private_extern__ void swap_x86_debug_state32(
+    x86_debug_state32_t *debug,
+    enum byte_sex target_byte_sex);
+
+__private_extern__ void swap_x86_debug_state64(
+    x86_debug_state64_t *debug,
+    enum byte_sex target_byte_sex);
+#endif /* x86_THREAD_STATE64 */
 
 __private_extern__ void swap_hppa_integer_thread_state(
     struct hp_pa_integer_thread_state *regs,
@@ -290,6 +322,18 @@ __private_extern__ void swap_prebind_cksum_command(
     struct prebind_cksum_command *cksum_cmd,
     enum byte_sex target_byte_sex);
 
+__private_extern__ void swap_uuid_command(
+    struct uuid_command *uuid_cmd,
+    enum byte_sex target_byte_sex);
+
+__private_extern__ void swap_linkedit_data_command(
+    struct linkedit_data_command *ld,
+    enum byte_sex target_byte_sex);
+
+__private_extern__ void swap_rpath_command(
+    struct rpath_command *rpath_cmd,
+    enum byte_sex target_byte_sex);
+
 __private_extern__ void swap_nlist(
     struct nlist *symbols,
     unsigned long nsymbols,
@@ -311,8 +355,8 @@ __private_extern__ void swap_relocation_info(
     enum byte_sex target_byte_sex);
 
 __private_extern__ void swap_indirect_symbols(
-    unsigned long *indirect_symbols,
-    unsigned long nindirect_symbols,
+    uint32_t *indirect_symbols,
+    uint32_t nindirect_symbols,
     enum byte_sex target_byte_sex);
 
 __private_extern__ void swap_dylib_reference(

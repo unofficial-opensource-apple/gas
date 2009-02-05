@@ -45,16 +45,14 @@ fragS zero_address_frag = {
 /*
  *			frag_grow()
  *
- * Internal.
  * Try to augment current frag by nchars chars.
  * If there is no room, close of the current frag with a ".fill 0"
  * and begin a new frag. Unless the new frag has nchars chars available
  * do not return. Do not set up any fields of *now_frag.
  */
-static
 void
 frag_grow(
-int nchars)
+unsigned int nchars)
 {
     if(frags.chunk_size == 0){
        know(flagseen['n']);
@@ -248,10 +246,29 @@ int fill_size,
 int max_bytes_to_fill)
 {
     void *fr_literal;
+    int max_chars;
+#ifdef I386
+	/*
+	 * For x86 architecures in sections containing only instuctions being
+	 * padded with nops that are aligned to 16 bytes or less and are
+	 * assembled -dynamic we will actually end up padding with the optimal
+	 * nop sequence.  So for that make sure there is the maximum number of
+	 * bytes allocated in the frag to use for this.
+	 */
+	if((frchain_now->frch_section.flags & S_ATTR_PURE_INSTRUCTIONS) != 0 &&
+	   fill_size == 1 && *fill == (char)0x90 && flagseen['k'] == TRUE){
+	    if(power_of_2_alignment > 4)
+		max_chars = 15;
+	    else
+		max_chars = (1 << power_of_2_alignment) - 1;
+	}
+	else
+#endif /* 386 */
+	max_chars = fill_size + (fill_size - 1);
 
 	fr_literal = (void *)
 	    frag_var(rs_align,				/* type */
-		     fill_size + (fill_size - 1),	/* max_chars */
+		     max_chars,				/* max_chars */
 		     fill_size,				/* var */
 		     (relax_substateT)max_bytes_to_fill,/* subtype */
 		     (symbolS *)0,			/* symbol */
@@ -260,7 +277,28 @@ int max_bytes_to_fill)
     if(fill_size == 1 || fill_size == 2 || fill_size == 4)
 	memcpy(fr_literal, fill, fill_size);
     else
-	as_warn("Invalid width for fill expression.");
+	as_bad("Invalid width for fill expression.");
+}
+
+addressT
+frag_now_fix_octets (void)
+{
+#ifdef NeXT_MOD
+  return ((char *) obstack_next_free (&frags)
+	  - frag_now->fr_literal);
+#else
+  if (now_seg == absolute_section)
+    return abs_section_offset;
+
+  return ((char *) obstack_next_free (&frchain_now->frch_obstack)
+	  - frag_now->fr_literal);
+#endif
+}
+
+addressT
+frag_now_fix (void)
+{
+  return frag_now_fix_octets () / OCTETS_PER_BYTE;
 }
 
 /* end: frags.c */

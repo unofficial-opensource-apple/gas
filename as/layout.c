@@ -30,6 +30,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 #include "md.h"
 #include "obstack.h"
 #include "input-scrub.h"
+#if I386
+#include "i386.h"
+#endif
 
 #ifdef SPARC
 /* internal relocation types not to be emitted */
@@ -65,6 +68,7 @@ void)
     relax_addressT slide, tmp;
     symbolS *symbolP;
     unsigned long nbytes, fill_size, repeat_expression, partial_bytes;
+    relax_stateT old_fr_type;
 
 	if(frchain_root == NULL)
 	    return;
@@ -110,7 +114,7 @@ void)
 	}
 
 	/*
-	 * Now set the relitive addresses of frags within the section by
+	 * Now set the relative addresses of frags within the section by
 	 * relaxing each section.  That is all sections will start at address
 	 * zero and addresses of the frags in that section will increase from
 	 * there.
@@ -165,7 +169,7 @@ void)
 	}
 
 	/*
-	 * Set the symbol addresses based on there frag's address.
+	 * Set the symbol addresses based on their frag's address.
 	 * First forward references are handled.
 	 */
 	for(symbolP = symbol_rootP; symbolP; symbolP = symbolP->sy_next){
@@ -198,6 +202,7 @@ void)
 		switch(fragP->fr_type){
 		case rs_align:
 		case rs_org:
+		    old_fr_type = fragP->fr_type;
 		    /* convert this frag to an rs_fill type */
 		    fragP->fr_type = rs_fill;
 		    /*
@@ -216,6 +221,33 @@ void)
 		    }
 		    fill_size = fragP->fr_var;
 		    repeat_expression = nbytes / fill_size;
+#ifdef I386
+		    /*
+		     * For x86 architecures in sections containing only
+		     * instuctions being padded with nops that are aligned to 16
+		     * bytes or less and are assembled with -dynamic we will
+		     * actually end up padding with the optimal nop sequence.
+		     * Previously there has been the maximum number of bytes
+		     * allocated in the frag to use for this.
+		     */
+		    if(old_fr_type == rs_align &&
+		       (frchain_now->frch_section.flags &
+			S_ATTR_PURE_INSTRUCTIONS) != 0 &&
+			 fill_size == 1 &&
+			 fragP->fr_literal[fragP->fr_fix] == (char)0x90 &&
+			 nbytes > 0 && nbytes < 16 &&
+			 flagseen['k'] == TRUE){
+			i386_align_code(fragP, nbytes);
+			/*
+			 * The call to i386_align_code() has set the fill_size
+			 * in fragP->fr_var to nbytes. So we set the fr_offset
+			 * to the fill repeat_expression to 1 to match for this
+			 * now an rs_fill type frag.
+			 */ 
+			fragP->fr_offset = 1;
+			break;
+		    }
+#endif /* I386 */
 		    partial_bytes = nbytes - (repeat_expression * fill_size);
 		    /*
 		     * Now set the fr_offset to the fill repeat_expression
@@ -275,7 +307,7 @@ void)
  * fixup_section() does the fixups of the frags and prepares the fixes so
  * relocation entries can be created from them.  The fixups cause the contents
  * of the frag to have the value for the fixup expression.  A fix structure that
- * ends up with a non NULL fx_addsy will have a relocation entry created for it.
+ * ends up with a non-NULL fx_addsy will have a relocation entry created for it.
  */
 static
 void
@@ -309,6 +341,20 @@ int nsect)
 	    where	= fixP->fx_where;
 	    place       = fragP->fr_literal + where;
 	    size	= fixP->fx_size;
+#ifdef TC_FIXUP_SYMBOL
+		fixP->fx_offset += TC_FIXUP_SYMBOL(fixP, nsect, &fixP->fx_addsy);
+		fixP->fx_offset -= TC_FIXUP_SYMBOL(fixP, nsect, &fixP->fx_subsy);
+#endif
+#if defined(I386) && defined(ARCH64)
+		if(fixP->fx_addsy == fixP->fx_subsy){
+			/*
+			 * If we've fixed up both symbols to the same location,
+			 * we don't need a relocation entry.
+			 */
+			fixP->fx_addsy = NULL;
+			fixP->fx_subsy = NULL;
+		}
+#endif
 	    add_symbolP = fixP->fx_addsy;
 	    sub_symbolP = fixP->fx_subsy;
 	    value  	= fixP->fx_offset;
@@ -332,7 +378,10 @@ int nsect)
 		    if(sub_symbolP->sy_type != N_ABS)
 			as_warn("Negative of non-absolute symbol %s",
 				sub_symbolP->sy_name);
+#if !(defined(I386) && defined(ARCH64))
+			/* Symbol offsets are not part of fixups for x86_64. */
 		    value -= sub_symbolP->sy_value;
+#endif
 		    fixP->fx_subsy = NULL;
 		}
 		/*
@@ -387,7 +436,14 @@ int nsect)
 		    else
 			value += add_symbolP->sy_value - sub_symbolP->sy_value;
 #else
+#if !(defined(I386) && defined(ARCH64))
+			/*
+			 * Special case for x86_64.  'value' doesn't include
+			 * the difference between the two symbols because
+			 * that's handled by the subtractor/vanilla reloc pair.
+			 */
 		    value += add_symbolP->sy_value - sub_symbolP->sy_value;
+#endif
 		    sub_symbol_nsect = sub_symbolP->sy_other;
 		    if(is_end_section_address(add_symbol_nsect,
 					      add_symbolP->sy_value) ||
@@ -426,14 +482,14 @@ int nsect)
 	        else{
 		     layout_line = fixP->line;
 		     layout_file = fixP->file;
-		     as_warn("non-relocatable subtraction expression, \"%s\" "
+		     as_bad("non-relocatable subtraction expression, \"%s\" "
 			     "minus \"%s\"", add_symbolP->sy_name,
 			     sub_symbolP->sy_name);
 		     if((add_symbolP->sy_type & N_TYPE) == N_UNDF)
-			as_warn("symbol: \"%s\" can't be undefined in a "
+			as_bad("symbol: \"%s\" can't be undefined in a "
 				"subtraction expression", add_symbolP->sy_name);
 		     if((sub_symbolP->sy_type & N_TYPE) == N_UNDF)
-			as_warn("symbol: \"%s\" can't be undefined in a "
+			as_bad("symbol: \"%s\" can't be undefined in a "
 				"subtraction expression", sub_symbolP->sy_name);
 		     layout_line = 0;
 		     layout_file = NULL;
@@ -486,19 +542,34 @@ int nsect)
 
 			    exp = (expressionS *)add_symbolP->expression;
 			    value +=
-				exp->X_add_symbol->sy_value -
+				exp->X_add_symbol->sy_value +
+				exp->X_add_number -
 				exp->X_subtract_symbol->sy_value;
 			}
 			else
+			{
 			    value += add_symbolP->sy_value;
+			}
 			fixP->fx_addsy = NULL; /* no relocation entry */
 			add_symbolP = NULL;
 			break;
 			
 		    case N_SECT:
+#if (defined(I386) && defined(ARCH64))
+			/*
+			 * Symbol offsets are not part of fixups for external
+			 * symbols for x86_64.
+			 */
+			if((is_section_debug(nsect) &&
+			    add_symbol_N_TYPE != N_UNDF) ||
+			   (add_symbol_N_TYPE == N_SECT &&
+			    is_local_symbol(add_symbolP) &&
+			    !is_section_cstring_literals(add_symbol_nsect)) )
+#else
 			if((add_symbolP->sy_type & N_EXT) != N_EXT ||
 			   add_symbol_N_TYPE != N_SECT ||
 			   !is_section_coalesced(add_symbol_nsect))
+#endif
 			    value += add_symbolP->sy_value;
 			break;
 			
@@ -519,7 +590,10 @@ down:
 	     * subtracting off the pc value (where) and adjust for insn size.
 	     */
 	    if(pcrel){
+#if !(defined(I386) && defined(ARCH64))
+		/* Symbol offsets are not part of fixups for x86_64. */
 		value -= size + where + fragP->fr_address;
+#endif
 		if(add_symbolP == NULL){
 		    fixP->fx_addsy = &abs_symbol; /* force relocation entry */
 		}
@@ -529,7 +603,7 @@ down:
 			    ((value & 0xffffff80) != 0xffffff80)) ||
 	       (size == 2 && (value & 0xffff8000) &&
 			    ((value & 0xffff8000) != 0xffff8000)))
-		as_warn("Fixup of %ld too large for field width of %d",
+		as_bad("Fixup of %ld too large for field width of %d",
 			value, size);
 
 	    /*
